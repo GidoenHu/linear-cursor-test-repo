@@ -1,0 +1,10 @@
+{
+  "snapshot": "snapshot-20260703-cd3c94cf-4155-4220-8dba-ccdf61e15fb6",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "install": "bash scripts/cloud-install.sh",
+  "start": "",
+  "terminals": []
+}

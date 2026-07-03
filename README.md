@@ -52,9 +52,21 @@ python3 hello.py
 Hello, World! Greetings from Cursor Agent × Linear integration.
 ```
 
+## Cloud Agent 学习指南
+
+基于一次完整学习对话整理的复习文档（以常见问题与困惑为主线）：
+
+| 文档 | 内容 |
+|------|------|
+| [配置与流程指南](docs/cursor-cloud-agent-配置与流程指南.md) | Environment、Session、Setup Agent、Secrets、日常流程 |
+| [VM 底层原理指南](docs/cursor-cloud-agent-VM底层原理指南.md) | microVM、rootfs、平台层融合、Anyrun、进程与 OS |
+| [Git PR 与协作流程指南](docs/git-PR与协作流程指南.md) | push/PR/Merge 区别、自己 repo vs fork 贡献他人 |
+
 ## 文件说明
 
 | 文件 | 说明 |
 |------|------|
 | `hello.py` | Hello World 脚本，验证 Agent 可正常创建并运行代码 |
 | `README.md` | 本文件，描述 Cursor ↔ Linear 任务流转流程 |
+| `AGENTS.md` | Cloud Agent 操作手册 |
+| `.cursor/environment.json` | Cloud 环境配置（Dockerfile + install 脚本） |
