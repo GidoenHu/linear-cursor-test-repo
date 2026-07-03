@@ -60,6 +60,7 @@ Hello, World! Greetings from Cursor Agent × Linear integration.
 |------|------|
 | [配置与流程指南](docs/cursor-cloud-agent-配置与流程指南.md) | Environment、Session、Setup Agent、Secrets、日常流程 |
 | [VM 底层原理指南](docs/cursor-cloud-agent-VM底层原理指南.md) | microVM、rootfs、平台层融合、Anyrun、进程与 OS |
+| [Git PR 与协作流程指南](docs/git-PR与协作流程指南.md) | push/PR/Merge 区别、自己 repo vs fork 贡献他人 |
 
 ## 文件说明
 
