@@ -1,0 +1,28 @@
+---
+description: 通用开发规范（Python + Node 项目）
+alwaysApply: true
+---
+
+# 通用规范
+
+## 代码风格
+
+- Python：遵循 PEP 8；新代码使用 type hints
+- TypeScript/JavaScript：优先使用 TypeScript；遵循项目已有 ESLint/Prettier 配置
+- 保持改动范围最小，不做无关重构
+
+## 测试
+
+- 修 bug 或加功能时，补充或更新对应测试
+- 提交前运行 AGENTS.md 中列出的验证命令
+
+## 安全
+
+- 禁止将 Secrets、Token、密码提交到仓库
+- 禁止执行破坏性 git 操作（如 `git push --force` 到 main）除非任务明确要求
+
+## Cloud Agent
+
+- 开始编码前先运行 `bash scripts/verify-env.sh`
+- 环境配置变更优先修改 `.cursor/Dockerfile` 和 `scripts/cloud-install.sh`
+- 操作说明写入 `AGENTS.md`，代码规范写入本 rules 目录

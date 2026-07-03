@@ -1,0 +1,4 @@
+# Python dependencies for Cloud Agent install script.
+# Add packages here, e.g.:
+# pytest>=8.0
+# httpx>=0.27

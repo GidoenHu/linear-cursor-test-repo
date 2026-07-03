@@ -1,0 +1,9 @@
+{
+  "name": "linear-cursor-test-repo",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Cursor × Linear integration test repo",
+  "scripts": {
+    "verify": "bash scripts/verify-env.sh"
+  }
+}
