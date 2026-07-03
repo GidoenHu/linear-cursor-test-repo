@@ -21,8 +21,11 @@
 11. [Q：Dashboard 里的 Personal Environment 是什么？](#11-qdashboard-里的-personal-environment-是什么)
 12. [Q：Update Script 是什么？有 Snapshot 还要跑吗？](#12-qupdate-script-是什么有-snapshot-还要跑吗)
 13. [Q：没有 environment.json，Setup Agent 能自己探测依赖吗？](#13-q没有-environmentjsonsetup-agent-能自己探测依赖吗)
-14. [本仓库的配置模板](#14-本仓库的配置模板)
-15. [速查 Checklist](#15-速查-checklist)
+14. [Q：commit/PR 与 VM 销毁的关系](#14-qcommitpr-与-vm-销毁的关系)
+15. [Q：如何主动 Stop / 结束 Session？](#15-q如何主动-stop--结束-session)
+16. [Q：有 Snapshot 时还会读 environment.json 吗？](#16-q有-snapshot-时还会读-environmentjson-吗)
+17. [本仓库的配置模板](#17-本仓库的配置模板)
+18. [速查 Checklist](#18-速查-checklist)
 
 ---
 
@@ -392,7 +395,190 @@ environment.json 里叫：install
 
 ---
 
-## 14. 本仓库的配置模板
+## 14. Q：commit/PR 与 VM 销毁的关系
+
+### 我当时的困惑
+
+- 自动 commit 是不是和 VM 资源释放绑定？
+- 超时不回复时，Agent 会不会在销毁前自动 commit 并开 PR？
+
+### 正确答案：间接相关，不是销毁前自动保存
+
+```
+自动 commit + push  →  改动进 GitHub  →  VM 销毁也不丢
+不 commit             →  改动只在 VM 磁盘  →  VM 销毁就丢
+```
+
+| 机制 | 真正目的 |
+|------|---------|
+| **边做边 commit/push** | 交付 PR、团队可见、**防止 VM 销毁后丢失未推送改动** |
+| **VM 销毁** | Session/Run 结束或超时后回收 microVM |
+| **销毁前自动 commit？** | ❌ **没有可靠、公开的「销毁前保底提交」机制** |
+
+### 各种状态下 VM 销毁后会怎样？
+
+| 状态 | VM 销毁后 |
+|------|----------|
+| 已 **push** 到 GitHub | ✅ 安全，PR 也在 |
+| 只 **commit** 未 push | ❌ 随 VM 丢失 |
+| **改了文件但未 commit** | ❌ 丢失 |
+
+**不能指望**「用户超时不回复 → Cursor 自动帮 commit/开 PR」。
+
+### Cloud Agent 的 commit / PR 工作流
+
+```
+一个任务 → 一个 feature 分支 → 一个 PR
+                ↓
+        多次 commit 累积在同一 PR 里
+```
+
+| 场景 | 是否自动 commit |
+|------|----------------|
+| 编码/配置类任务 | ✅ 有实质改动就 commit + push（不必每轮等你开口） |
+| 纯问答、无文件改动 | ❌ 不 commit |
+| 你明确说「先别提交」 | 等你 |
+
+### 计费补充
+
+Cursor 论坛说明：Cloud Agent **主要按 token/API 用量计费**，不是按 VM 占多久。commit 策略的核心是 **别把改动只留在临时 VM**，不是为了省 VM 租金。
+
+---
+
+## 15. Q：如何主动 Stop / 结束 Session？
+
+### 我当时的困惑
+
+找不到 Stop 按钮；长期挂着会不会一直占资源？
+
+### 常见入口
+
+| 位置 | 操作 |
+|------|------|
+| **Agent 对话页输入框旁** | ⏹ Stop（Agent **正在跑**时最明显） |
+| **[cursor.com/agents](https://cursor.com/agents)** | 进入 Session → Stop |
+| **Cursor Desktop / iOS** | Cloud Agent 窗口 → Stop |
+| **API** | `POST /v1/agents/{id}/runs/{runId}/cancel` |
+| **归档（API）** | `POST /v1/agents/{id}/archive` |
+
+### 为什么有时看不到 Stop？
+
+**① Agent 在等你回复（Run 可能已结束）**
+
+```
+Agent 正在跑（写代码、跑命令）  →  Stop 明显
+Agent 已答完，等你说话        →  可能无 Stop，像普通聊天
+```
+
+**② 看错了页面**
+
+- **Environment 页**（Dashboard → Environments）= 配机器、Setup Agent
+- **Session 页**（cursor.com/agents）= 具体任务对话 → **Stop 在这里**
+
+**③ UI 不同步（已知问题）**
+
+VM 可能已结束但界面仍显示 Running。可刷新 [cursor.com/agents](https://cursor.com/agents) 或 Desktop `Developer: Reload Window`。
+
+### Run / Session / VM 三层
+
+```
+Agent（Session）  = 对话容器，可多次 run
+  └── Run         = 一轮干活（RUNNING → FINISHED / CANCELLED / EXPIRED）
+        └── VM    = Run 活跃时存在；结束后回收
+```
+
+- **Stop / Cancel**：停当前 **Run**
+- **你不回消息**：Run 可能已 FINISHED，VM 在宽限期后回收，不等于必须再点 Stop
+
+### 长期不回复会怎样？
+
+- VM **不会无限期保留**；任务完成或空闲过久会回收
+- 自托管 worker 参考：`--idle-release-timeout`（如 600 秒）= Session 结束后多留一会儿等 follow-up，**不是**销毁前自动 commit
+- 已 **push** 的改动在 GitHub 上安全；未 push 的会丢
+
+---
+
+## 16. Q：有 Snapshot 时还会读 environment.json 吗？
+
+### 我当时的困惑
+
+有 Snapshot 时，新开 Session 是不是就不读 `environment.json` 来构建了？`snapshot` 字段干什么用？Setup Agent 会用吗？
+
+### 正确答案：仍然读，而且优先级最高
+
+**有 Snapshot 不等于跳过 `environment.json`。** 每次 Session 启动都会 **解析** 当前分支 commit 里的 `environment.json`（若存在），它是 Environment 配置的 **第一优先级**。
+
+区别只是 **「从哪启动 VM」** 和 **「是否重建 Dockerfile」**：
+
+```
+有 environment.json 时，每次 Session：
+
+① 读取 environment.json（含 snapshot、build、install）
+② 若有 snapshot 字段且 Snapshot 可用 → 从 Snapshot 恢复 VM（快）
+   若 Snapshot 失效 → 回退 Dockerfile build 或默认基础镜像
+③ 仍执行 install 字段里的命令
+④ checkout 代码 → Agent 开始
+```
+
+| 字段 | 有 Snapshot 时还用吗？ | 作用 |
+|------|---------------------|------|
+| `"snapshot"` | ✅ 用于步骤②，决定从哪张快照启动 | 指向 Dashboard 保存的快照 ID |
+| `"install"` | ✅ 每次仍执行 | 增量同步项目依赖 |
+| `"build"` | ⚠️ 平时不重建；Snapshot 失效时作 **后备** | 可重建环境的 Dockerfile |
+| `"start"` / `"terminals"` | ✅ 仍读取 | 启动后台服务 |
+
+### `snapshot` 字段是干嘛的？
+
+**把 Dashboard 里 Save 的快照 ID 写进仓库，方便版本管理和团队共享。**
+
+官方示例：
+
+```json
+{
+  "snapshot": "snapshot-20260212-00000000-0000-0000-0000-000000000000",
+  "install": "bash scripts/cloud-install.sh"
+}
+```
+
+| 存在位置 | 作用 |
+|---------|------|
+| **Dashboard Environment 详情页** | UI 里看到、管理 Snapshot |
+| **environment.json 的 `snapshot`** | 同一 ID 写进 Git，团队拉代码即知道用哪个快照 |
+
+两者指向 **同一个 Snapshot**；仓库有 `environment.json` 时 **以仓库为准**（覆盖 Dashboard Personal/Team 配置）。
+
+### Setup Agent 和 `snapshot` 字段的关系
+
+**Setup Agent 负责「制造」Snapshot；`snapshot` 字段负责「引用」Snapshot。**
+
+```
+Setup Agent 跑完
+    → 你在 Dashboard 点 Save Snapshot
+    → 得到 Snapshot ID（如 snapshot-20260703-xxxx）
+    → （可选）复制到 environment.json 的 "snapshot" 字段并 commit
+
+之后每次开发 Session：
+    → 读 environment.json
+    → 用其中的 snapshot ID 启动（而不是重新 docker build）
+```
+
+Setup Agent **运行过程中**通常还没有 `snapshot` 字段（第一次配环境）；Save 之后才产生 ID。所以：
+
+- Setup 时：多从 **基础镜像 / Dockerfile** 冷启动
+- 日常 Session：多从 **snapshot 字段** 热启动
+
+### 常见误解纠正
+
+| 误解 | 实际 |
+|------|------|
+| 有 Snapshot 就不读 environment.json | ❌ 仍读，且优先级最高 |
+| snapshot 字段给 Setup Agent 用 | ❌ Setup **产出** Snapshot；字段给 **后续 Session 引用** |
+| 有 Snapshot 就不跑 install | ❌ install **每次仍跑** |
+| 有 Snapshot 就不需要 Dockerfile | ❌ Dockerfile 是 Snapshot 失效时的后备 |
+
+---
+
+## 17. 本仓库的配置模板
 
 PR 分支 `cloudagent/cloud-env-templates-0365` 已添加：
 
@@ -411,7 +597,7 @@ AGENTS.md                 # Cloud Agent 操作手册
 
 ---
 
-## 15. 速查 Checklist
+## 18. 速查 Checklist
 
 ### 新项目从零到能在 iOS 上开 Agent
 
@@ -438,4 +624,4 @@ AGENTS.md                 # Cloud Agent 操作手册
 
 ---
 
-*文档版本：2026-07-03，基于 Cursor Cloud Agent 官方文档与一次真实 Session 环境观察整理。*
+*文档版本：2026-07-03（修订：commit/VM 生命周期、Stop Session、snapshot 与 environment.json），基于 Cursor Cloud Agent 官方文档与一次真实 Session 环境观察整理。*
